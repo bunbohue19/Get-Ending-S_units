@@ -3,7 +3,7 @@ import networkx as nx
 def check_pred(cfg:nx.DiGraph,source,type:type):
     for pred in cfg.predecessors(source):
         if isinstance(pred,type):
-            return True
+            return pred
         else:
             return check_pred(cfg,pred,type)
     
@@ -88,13 +88,17 @@ class stmtCFG:
         return [],cfg
     def buildContinue(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.tree.ContinueStatement):
         cfg.add_node(node)
+        label=None
         if node.goto==None:
-            pred=cfg.predecessors(node)
-            while(any(isinstance)):
-        return [],cfg
+            label=check_pred(cfg,node,javalang.tree.ForStatement)
+            
+            cfg.add_edge(node,)
+        else:
+            label=node.goto
+        return [label],cfg
     def buildReturn(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.tree.ReturnStatement):
         cfg.add_node(node)
-
+        
         for pre in prev:
             cfg.add_edge(pre,node)
         return [],cfg

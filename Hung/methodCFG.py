@@ -10,7 +10,6 @@ class cfg:
         prev=[method]
         for stmt in method.body:
             prev,G=buildNode(G,prev,stmt)
-            
         return G
 
 
