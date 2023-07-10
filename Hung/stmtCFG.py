@@ -2,7 +2,7 @@ import javalang
 import networkx as nx
 import copy
 def check_pred(cfg:nx.DiGraph,source,type):
-    for pred in cfg.predecessors(source):
+    for pred in list(cfg.predecessors(source)):
         if isinstance(pred,type):
             return pred
         else:
@@ -75,34 +75,42 @@ class stmtCFG:
         last_else=[node.condition]
         last_else,cfg=self.buildNode(cfg,last_else,node.else_statement)
         last_then,cfg=self.buildNode(cfg,last_then,node.then_statement)
-        res=[]
-        for i in last_else:
-            res.append(i)
-        for i in last_then:
-            res.append(i)
+        res=last_else+last_then
         return res,cfg
 
     def buildFor(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.tree.ForStatement):
+        # if isinstance(node.control,javalang.tree.EnhancedForControl):
         cfg.add_node(node)
         for pre in prev:
             cfg.add_edge(pre,node)
-        control=node.control
-        condition=control.condition
-        init=control.init
-        update=control.update
         prev=[node]
-        prev,cfg=self.buildNode(cfg,prev,init)
-
-        prev,cfg=self.buildNode(cfg,prev,condition)
-
+        prev,cfg=self.buildNode(cfg,prev,node.control)
         prev,cfg=self.buildNode(cfg,prev,node.body)
-        for up in update:
-            prev,cfg=self.buildNode(cfg,prev,up)
-        prev,cfg=self.buildNode(cfg,prev,condition)
+        prev,cfg=self.buildNode(cfg,prev,node.control)
         for pre in prev:
             cfg.add_edge(pre,node)
         prev=[node]
         return prev,cfg
+        # cfg.add_node(node)
+        # for pre in prev:
+        #     cfg.add_edge(pre,node)
+        # control=node.control
+        # condition=control.condition
+        # init=control.init
+        # update=control.update
+        # prev=[node]
+        # prev,cfg=self.buildNode(cfg,prev,init)
+
+        # prev,cfg=self.buildNode(cfg,prev,condition)
+
+        # prev,cfg=self.buildNode(cfg,prev,node.body)
+        # for up in update:
+        #     prev,cfg=self.buildNode(cfg,prev,up)
+        # prev,cfg=self.buildNode(cfg,prev,condition)
+        # for pre in prev:
+        #     cfg.add_edge(pre,node)
+        # prev=[node]
+        # return prev,cfg
     def buildWhile(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.tree.WhileStatement):
         cfg.add_node(node)
         for pre in prev:
@@ -120,7 +128,6 @@ class stmtCFG:
         for pre in prev:
             cfg.add_edge(pre,node)
         prev=[node]
-        cfg.add_node(node.control)
         prev,cfg=self.buildNode(cfg,prev,node.body)
         prev,cfg=self.buildNode(cfg,prev,node.condition)
         for pre in prev:
@@ -146,18 +153,20 @@ class stmtCFG:
             for resource in node.resources:
                 cfg.add_edge(node,resource)
             prev=node.resources    
-        prev_try=copy.deepcopy(prev)
+        prev_try=prev
 
         for blk in node.block:
             prev_try,cfg=self.buildNode(cfg,prev_try,blk)
         
         prev_catches=[]
-        for catch in node.catches:
-            prev_catch,cfg=self.buildNode(cfg,prev,catch.parameter)
-            for blk in catch.block:
-                prev_catch,cfg=self.buildNode(cfg,prev_catch,blk)
-            prev_catches.append(prev_catch)
-
+        if node.catches is not None:
+            for catch in node.catches:
+                prev_catch,cfg=self.buildNode(cfg,prev_try,catch.parameter)
+                for blk in catch.block:
+                    prev_catch,cfg=self.buildNode(cfg,prev_catch,blk)
+                for pre in prev_catch:
+                    prev_catches.append(pre)
+            
         prev=[]
         for pre in prev_catches:
             prev.append(pre)
@@ -166,7 +175,9 @@ class stmtCFG:
         if node.finally_block is None:
             return prev,cfg
         else:
-            prev,cfg=self.buildNode(cfg,prev,node.finally_block)
+            print("hello")
+            for blk in node.finally_block:
+                prev,cfg=self.buildNode(cfg,prev,blk)
             return prev,cfg
     def buildStmt(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.ast.Node):
         cfg.add_node(node)
@@ -182,6 +193,6 @@ class stmtCFG:
         prev=[]
         for case in node.cases:
             cfg.add_node(case)
-            cfg.add_edge(node.expression)
+            cfg.add_edge(node.expression,case)
             prev.append(case)
         return prev,cfg
