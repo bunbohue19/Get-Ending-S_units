@@ -2,6 +2,8 @@ import javalang
 import networkx as nx
 from stmtCFG import buildNode
 import stmtCFG
+def getLine(node:javalang.ast.Node):
+    return node.position.line
 def findData(root):
     res=[]
     children=None
@@ -17,9 +19,24 @@ def findData(root):
             
             res+=findData(child)
     return res
-def containData(root,data):
-    if isinstance(root,javalang.tree.LocalVariableDeclaration):
-        return any()
+def containData(var,datalist):
+    if isinstance(var,javalang.tree.MemberReference):
+        for data in datalist:
+            if isinstance(data,javalang.tree.MemberReference):
+                if data.member==var.member:
+                    return True
+    if isinstance(var,javalang.tree.This):
+        for data in datalist:
+            if isinstance(data,javalang.tree.This):
+                if var.selectors==data.selectors:
+                    return True
+    return False
+def isSWUM(method1:str,method2:str):
+    """
+    given 2 string of method
+    return true if they have similarity in name
+    """
+    return False
 class Sunit:
     def __init__(self,body:str):
         """
@@ -45,14 +62,16 @@ class Sunit:
         for stmt in method.body:
             prev,G=buildNode(G,prev,stmt)
         self.cfg=G
-    def getLine(self, node: javalang.ast.Node):
+    def getSource(self, node: javalang.ast.Node):
         """
         return source code from node position(Loc)
         """
         pass
-    def isSWUM(self,method1:str,method2:str):
-        return True
     def getSameActionSunit(self):
+        """
+        get method declaration of the main method
+        get all method invocation and compare similarity to the main method name by using SWUM
+        """
         res=[]
         method=None
         for node in self.cfg.nodes:
@@ -60,12 +79,50 @@ class Sunit:
                 method=node
                 break
         for _,node in self.ast.filter(javalang.tree.MethodInvocation):
-            if self.isSWUM(method.name,node.member):
+            if isSWUM(method.name,node.member):
                 res+=[node]
-    def composeSunit(): 
-        pass
-    def getControllingSunit(self,sunit:list[javalang.ast.Node]):
+        return res
+    def isIsolated(self,node:javalang.ast.Node):
+        """
+        check if a node is an extra node that will not be executed in the code
+        """
+        if self.cfg.in_degree(node)==0:
+            if isinstance(node,javalang.tree.MethodDeclaration):
+                return False
+            else:
+                return True
+        return any(self.isIsolated(pred) for pred in self.cfg.predecessors(node))
+        
+    def composeSunit(self):
+        """
+        get compose first 3 sunit heuristic
+        get data sunit from previous heuristic
+        get control sunit from previous heuristic
+        sort by code line in class
+        return list of lines of code
+        """
+        res=[]
+        res+=self.getEndingSunit()
+        res+=self.getSameActionSunit()
+        res+=self.getVoidReturnSunit()
+        heu_data=[]
+        for result in res:
+            if not result in heu_data:
+                heu_data.append(result)
+        heu_data+=self.getDataFacilitatingSunit(heu_data)
+        heu_control=[]
+        for dt in heu_data:
+            if not dt in heu_control:
+                heu_control.append(dt)
+        heu_control+=self.getControllingSunit(res)
+        heu_control.sort(key=getLine)
+        return heu_control
 
+    def getControllingSunit(self,sunit:list[javalang.ast.Node]):
+        """
+        input previous heuristic
+        return the latest branching statement (if/switch/while/for)
+        """
         return []
     def getDataFacilitatingSunit(self,sunit:list[javalang.ast.Node]):
         """
@@ -79,35 +136,55 @@ class Sunit:
             if isinstance(node,javalang.tree.LocalVariableDeclaration):
                 for data in datalist:
                     if isinstance(data,javalang.tree.MemberReference):
-                        declarators=node.declarator
+                        declarators=node.declarators
                         if any([data.member== dec.name for dec in declarators ]):
                             res.append(node)
                             break
             elif isinstance(node,javalang.tree.StatementExpression):
                 if isinstance(node.expression,javalang.tree.Assignment):
                     assign=node.expression
+                    if containData(assign.expressionl,datalist):
+                        res.append(node)
                     
-                    pass
                 if isinstance(node.expression,javalang.tree.MemberReference):
-                    pass
+                    if containData(node,datalist):
+                        res.append(node)
                 if isinstance(node.expression,javalang.tree.This):
-                    pass
-                pass
+                    if containData(node,datalist):
+                        res.append(node)
         return res
     def getVoidReturnSunit(self):
+        """
+        get all statement that have method invocation in expression (which is void method)
+        """
         res=[]
         for _,node in self.ast.filter(javalang.tree.StatementExpression):
             if isinstance(node.expression,javalang.tree.MethodInvocation):
                 
                 res+=[node]
         return res
+    def getPrevStatement(self,node:javalang.ast.Node):
+        if isinstance(node,(javalang.tree.IfStatement,javalang.tree.SwitchStatement,javalang.tree.StatementExpression)):
+            return [node]
+        else:
+            return self.getPrevStatement(list(self.cfg.predecessors(node))[0])
     def getEndingSunit(self):
+        """
+        get all node in cfg that either:
+            a return node (if that is void, return previous line)
+            a node that direct to no 
+        """
         res=[]
         for node in self.cfg.nodes:
             if self.cfg.out_degree(node)==0:
-                if node==javalang.tree.ReturnStatement:
+                if self.isIsolated(node):
+                    
+                    continue
+                if isinstance(node,javalang.tree.ReturnStatement):
                     if node.label is None and node.expression is None:
-                        res+=list(self.cfg.predecessors(node))
+                        res+=self.getPrevStatement(node)
+                        continue
+                
                 res+=[node]
                         
             elif (all(suc in node.children for suc in list(self.cfg.successors(node))))and isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
