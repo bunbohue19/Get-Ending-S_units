@@ -175,7 +175,6 @@ class stmtCFG:
         if node.finally_block is None:
             return prev,cfg
         else:
-            print("hello")
             for blk in node.finally_block:
                 prev,cfg=self.buildNode(cfg,prev,blk)
             return prev,cfg
