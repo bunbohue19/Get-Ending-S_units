@@ -22,6 +22,14 @@ def containData(root,data):
         return any()
 class Sunit:
     def __init__(self,body:str):
+        """
+        build CFG for method 
+        init:
+            self.ast: AST 
+            self.cfg: CFG
+            self.body: String body
+        """
+        self.body=body
         cls="public class Main{\n"+body+"\n}"
         tree=javalang.parse.parse(cls)
         self.ast=tree
@@ -36,6 +44,11 @@ class Sunit:
         for stmt in method.body:
             prev,G=buildNode(G,prev,stmt)
         self.cfg=G
+    def getLine(self, node: javalang.ast.Node):
+        """
+        return source code from node position
+        """
+        pass
     def isSWUM(self,method1:str,method2:str):
         return True
     def getSameActionSunit(self):
@@ -48,10 +61,15 @@ class Sunit:
         for _,node in self.ast.filter(javalang.tree.MethodInvocation):
             if self.isSWUM(method.name,node.member):
                 res+=[node]
+    def composeSunit():
+        pass
     def getControllingSunit(self,sunit:list[javalang.ast.Node]):
 
         return []
     def getDataFacilitatingSunit(self,sunit:list[javalang.ast.Node]):
+        """
+        get data
+        """
         datalist=[]
         for node in sunit:
             datalist+=findData(node)
@@ -79,6 +97,7 @@ class Sunit:
         res=[]
         for _,node in self.ast.filter(javalang.tree.StatementExpression):
             if isinstance(node.expression,javalang.tree.MethodInvocation):
+                
                 res+=[node]
         return res
     def getEndingSunit(self):
