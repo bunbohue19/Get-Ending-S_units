@@ -27,10 +27,11 @@ class Sunit:
         init:
             self.ast: AST 
             self.cfg: CFG
-            self.body: String body
+            self.source_code: String class
         """
-        self.body=body
+        
         cls="public class Main{\n"+body+"\n}"
+        self.source_code=cls
         tree=javalang.parse.parse(cls)
         self.ast=tree
         method=None
@@ -46,7 +47,7 @@ class Sunit:
         self.cfg=G
     def getLine(self, node: javalang.ast.Node):
         """
-        return source code from node position
+        return source code from node position(Loc)
         """
         pass
     def isSWUM(self,method1:str,method2:str):
@@ -61,7 +62,7 @@ class Sunit:
         for _,node in self.ast.filter(javalang.tree.MethodInvocation):
             if self.isSWUM(method.name,node.member):
                 res+=[node]
-    def composeSunit():
+    def composeSunit(): 
         pass
     def getControllingSunit(self,sunit:list[javalang.ast.Node]):
 
