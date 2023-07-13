@@ -45,7 +45,7 @@ def containData(var,datalist):
 def isSWUM(method1:str,method2:str):
     """
     given 2 string of method
-    return true if they have similarity in name
+    return true if they have similarity in name(LOC)
     """
     return False
 class Sunit:
