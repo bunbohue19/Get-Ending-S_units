@@ -1,13 +1,18 @@
-import javalang 
+import javalang
 import networkx as nx
 from stmtCFG import buildNode
 import stmtCFG
 import re
-
-def getLine(node : javalang.ast.Node):
-    return node.position.line
-
+def getLine(node:javalang.ast.Node):
+    """
+    get line of code for sorting
+    waring: not use for extract source code
+    """
+    return node.position.line*10000+node.position.column
 def findData(root):
+    """
+    given statement, return data ussed
+    """
     res=[]
     children=None
     if isinstance(root,javalang.ast.Node):
@@ -23,6 +28,10 @@ def findData(root):
             res+=findData(child)
     return res
 def containData(var,datalist):
+    """
+    (for data facilitating)
+    find a member reference or this referenced appear in datalist
+    """
     if isinstance(var,javalang.tree.MemberReference):
         for data in datalist:
             if isinstance(data,javalang.tree.MemberReference):
@@ -34,24 +43,19 @@ def containData(var,datalist):
                 if var.selectors==data.selectors:
                     return True
     return False
-<<<<<<< HEAD
-def isSWUM(method1:str,method2:str):
+
+def get_method_name(identifier):
+    return [x for x in identifier if x is not ('boolean' or 'char' or 'byte' or 'short' or 'int' or 'long' or 'float' or 'double' or 'String')]
+
+def isSWUM(method_1 : str, method_2 : str):
     """
     given 2 string of method
-    return true if they have similarity in name(LOC)
+    return true if they have similarity in name
     """
-    return False
-=======
-
-def camelCaseSplit(string):
-    return re.findall(r'[A-Z](?:[a-z]+|[A-Z]*(?=[A-Z]|$))', string) + re.findall(r'\d+', string)
-
-# def isSWUM(method_name_1 : str, method_name_2 : str):
-#     for word in camelCaseSplit(method_name_1):
-#         if 
-     
-    
->>>>>>> 49e838dd3bbab5f6851c2a22e3c0cb20acb6a8e6
+    tokens_1, tokens_2 = list(javalang.tokenizer.tokenize(method_1))[:4], list(javalang.tokenizer.tokenize(method_2))[:4]
+    identifier_1, identifier_2 = get_method_name([token.value for token in tokens_1 if isinstance(token, javalang.tokenizer.Identifier)]), get_method_name([token.value for token in tokens_2 if isinstance(token, javalang.tokenizer.Identifier)])
+    method_name_1, method_name_2 = identifier_1[0], identifier_2[0]
+    return [True if (method_name_1 in method_name_2) or (method_name_2 in method_name_1) else False]
 class Sunit:
     def __init__(self,body:str):
         """
@@ -77,13 +81,11 @@ class Sunit:
         for stmt in method.body:
             prev,G=buildNode(G,prev,stmt)
         self.cfg=G
-        
-    """
-        return source code line from node position(Loc)
-    """    
-    def getSource(self, node : javalang.ast.Node):    
-        return node.position.line
-    
+    def getSource(self, node: javalang.ast.Node):
+        """
+        return source code from node position(Loc)
+        """
+        pass
     def getSameActionSunit(self):
         """
         get method declaration of the main method
@@ -98,8 +100,7 @@ class Sunit:
         for _,node in self.ast.filter(javalang.tree.MethodInvocation):
             if isSWUM(method.name,node.member):
                 res+=[node]
-        return res
-    
+        return []
     def isIsolated(self,node:javalang.ast.Node):
         """
         check if a node is an extra node that will not be executed in the code
@@ -133,22 +134,58 @@ class Sunit:
             if not dt in heu_control:
                 heu_control.append(dt)
         heu_control+=self.getControllingSunit(res)
-        heu_control.sort(key=getLine)
-        return heu_control
+        ret=[]
+        for dt in heu_control:
+            if not dt in ret:
+                ret.append(dt) 
+        ret.sort(key=getLine)
+        return ret
 
-    def getControllingSunit(self,sunit:list[javalang.ast.Node]):
+    def getControllingSunit(self,sunits:list[javalang.ast.Node]):
         """
         input previous heuristic
         return the latest branching statement (if/switch/while/for)
         """
-        return []
-    def getDataFacilitatingSunit(self,sunit:list[javalang.ast.Node]):
+        res=[]
+        for _,node in self.ast:
+            if isinstance(node,javalang.tree.IfStatement):
+                block=[]
+                if node.then_statement is not None:
+                    then=node.then_statement
+                    if isinstance(then,javalang.tree.BlockStatement):
+                        block+=then.statements
+                    else:
+                        block.append(then)
+                if node.else_statement is not None:
+                    el=node.else_statement
+                    
+                    if isinstance(el.statements,javalang.tree.BlockStatement):
+                        block+=el.statements
+                    else:
+                        block.append(el)
+                for stmt in block:
+                    if stmt in sunits:
+                        res+=[node]
+                        break
+                
+            elif isinstance(node,javalang.tree.SwitchStatementCase):
+                for stmt in node.statements:
+                    if stmt in sunits:
+                        res+= list(self.cfg.predecessors(list(self.cfg.predecessors(node.case[0]))[0]))
+                        break
+            elif isinstance(node,(javalang.tree.WhileStatement,javalang.tree.ForStatement,javalang.tree.DoStatement)):
+                for stmt in node.body:
+                    if stmt in sunits:
+                        res+=[node]
+                        break
+        return res
+    def getDataFacilitatingSunit(self,sunits:list[javalang.ast.Node]):
         """
-        get data
+        get nodes (line of codes) that manipulate the data in previous heuristic
         """
         datalist=[]
-        for node in sunit:
-            datalist+=findData(node)
+        for sunit in sunits:
+            datalist+=findData(sunit)
         res=[]
         for _,node in self.ast:
             if isinstance(node,javalang.tree.LocalVariableDeclaration):
@@ -182,6 +219,11 @@ class Sunit:
                 res+=[node]
         return res
     def getPrevStatement(self,node:javalang.ast.Node):
+
+        """
+        (used for ending sunit )
+        get previous statement if the final node is void return node
+        """
         if isinstance(node,(javalang.tree.IfStatement,javalang.tree.SwitchStatement,javalang.tree.StatementExpression)):
             return [node]
         else:
@@ -202,7 +244,9 @@ class Sunit:
                     if node.label is None and node.expression is None:
                         res+=self.getPrevStatement(node)
                         continue
-                
+                if isinstance(node,(javalang.tree.BreakStatement)):
+                    while all(isinstance(pre,javalang.tree.Statement) for pre in list(self.cfg.predecessors(node))):
+                        node=list(self.cfg.predecessors(node))[0]
                 res+=[node]
                         
             elif (all(suc in node.children for suc in list(self.cfg.successors(node))))and isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
@@ -210,7 +254,10 @@ class Sunit:
                 res+=self.get_end(node.body)
         return res
     def get_end(self,node):
+        """
+        Handling ending node for non-Statement node (such as If, Switch,Try,Block)
         
+        """
         if isinstance(node,(javalang.tree.BlockStatement)):
             if len(node.statements)>0:
 
