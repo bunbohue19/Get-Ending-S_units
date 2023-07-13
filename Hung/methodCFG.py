@@ -3,8 +3,15 @@ import networkx as nx
 from stmtCFG import buildNode
 import stmtCFG
 def getLine(node:javalang.ast.Node):
-    return node.position.line
+    """
+    get line of code for sorting
+    waring: not use for extract source code
+    """
+    return node.position.line*10000+node.position.column
 def findData(root):
+    """
+    given statement, return data ussed
+    """
     res=[]
     children=None
     if isinstance(root,javalang.ast.Node):
@@ -20,6 +27,10 @@ def findData(root):
             res+=findData(child)
     return res
 def containData(var,datalist):
+    """
+    (for data facilitating)
+    find a member reference or this referenced appear in datalist
+    """
     if isinstance(var,javalang.tree.MemberReference):
         for data in datalist:
             if isinstance(data,javalang.tree.MemberReference):
@@ -115,8 +126,12 @@ class Sunit:
             if not dt in heu_control:
                 heu_control.append(dt)
         heu_control+=self.getControllingSunit(res)
-        heu_control.sort(key=getLine)
-        return heu_control
+        ret=[]
+        for dt in heu_control:
+            if not dt in ret:
+                ret.append(dt) 
+        ret.sort(key=getLine)
+        return ret
 
     def getControllingSunit(self,sunits:list[javalang.ast.Node]):
         """
@@ -126,9 +141,20 @@ class Sunit:
         res=[]
         for _,node in self.ast:
             if isinstance(node,javalang.tree.IfStatement):
-                then=node.then_statement
-                el=node.else_statement
-                block=then.statements+el.statements
+                block=[]
+                if node.then_statement is not None:
+                    then=node.then_statement
+                    if isinstance(then,javalang.tree.BlockStatement):
+                        block+=then.statements
+                    else:
+                        block.append(then)
+                if node.else_statement is not None:
+                    el=node.else_statement
+                    
+                    if isinstance(el.statements,javalang.tree.BlockStatement):
+                        block+=el.statements
+                    else:
+                        block.append(el)
                 for stmt in block:
                     if stmt in sunits:
                         res+=[node]
@@ -147,7 +173,7 @@ class Sunit:
         return res
     def getDataFacilitatingSunit(self,sunits:list[javalang.ast.Node]):
         """
-        get data
+        get nodes (line of codes) that manipulate the data in previous heuristic
         """
         datalist=[]
         for sunit in sunits:
@@ -185,6 +211,11 @@ class Sunit:
                 res+=[node]
         return res
     def getPrevStatement(self,node:javalang.ast.Node):
+
+        """
+        (used for ending sunit )
+        get previous statement if the final node is void return node
+        """
         if isinstance(node,(javalang.tree.IfStatement,javalang.tree.SwitchStatement,javalang.tree.StatementExpression)):
             return [node]
         else:
@@ -205,7 +236,9 @@ class Sunit:
                     if node.label is None and node.expression is None:
                         res+=self.getPrevStatement(node)
                         continue
-                
+                if isinstance(node,(javalang.tree.BreakStatement)):
+                    while all(isinstance(pre,javalang.tree.Statement) for pre in list(self.cfg.predecessors(node))):
+                        node=list(self.cfg.predecessors(node))[0]
                 res+=[node]
                         
             elif (all(suc in node.children for suc in list(self.cfg.successors(node))))and isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
@@ -213,7 +246,10 @@ class Sunit:
                 res+=self.get_end(node.body)
         return res
     def get_end(self,node):
+        """
+        Handling ending node for non-Statement node (such as If, Switch,Try,Block)
         
+        """
         if isinstance(node,(javalang.tree.BlockStatement)):
             if len(node.statements)>0:
 
