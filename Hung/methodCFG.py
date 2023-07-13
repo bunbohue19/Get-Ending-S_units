@@ -118,19 +118,40 @@ class Sunit:
         heu_control.sort(key=getLine)
         return heu_control
 
-    def getControllingSunit(self,sunit:list[javalang.ast.Node]):
+    def getControllingSunit(self,sunits:list[javalang.ast.Node]):
         """
         input previous heuristic
         return the latest branching statement (if/switch/while/for)
         """
-        return []
-    def getDataFacilitatingSunit(self,sunit:list[javalang.ast.Node]):
+        res=[]
+        for _,node in self.ast:
+            if isinstance(node,javalang.tree.IfStatement):
+                then=node.then_statement
+                el=node.else_statement
+                block=then.statements+el.statements
+                for stmt in block:
+                    if stmt in sunits:
+                        res+=[node]
+                        break
+                
+            elif isinstance(node,javalang.tree.SwitchStatementCase):
+                for stmt in node.statements:
+                    if stmt in sunits:
+                        res+= list(self.cfg.predecessors(list(self.cfg.predecessors(node.case[0]))[0]))
+                        break
+            elif isinstance(node,(javalang.tree.WhileStatement,javalang.tree.ForStatement,javalang.tree.DoStatement)):
+                for stmt in node.body:
+                    if stmt in sunits:
+                        res+=[node]
+                        break
+        return res
+    def getDataFacilitatingSunit(self,sunits:list[javalang.ast.Node]):
         """
         get data
         """
         datalist=[]
-        for node in sunit:
-            datalist+=findData(node)
+        for sunit in sunits:
+            datalist+=findData(sunit)
         res=[]
         for _,node in self.ast:
             if isinstance(node,javalang.tree.LocalVariableDeclaration):

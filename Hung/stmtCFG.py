@@ -191,7 +191,14 @@ class stmtCFG:
         cfg.add_edge(node,node.expression)
         prev=[]
         for case in node.cases:
-            cfg.add_node(case)
-            cfg.add_edge(node.expression,case)
-            prev.append(case)
+
+            pre=[node.expression]
+            cfg.add_nodes_from(case.case)
+            
+            for c in case.case:
+                pre,cfg=self.buildNode(cfg,pre,c)
+            cfg.add_nodes_from(case.statements)
+            for stmt in case.statements:
+                pre,cfg=self.buildNode(cfg,pre,stmt)
+            prev.append(pre)
         return prev,cfg
