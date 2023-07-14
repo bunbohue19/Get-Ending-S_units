@@ -51,7 +51,7 @@ def isSWUM(method_name_1 : str, method_name_2 : str):
     return False     
     
 class Sunit:
-    def __init__(self,body:str):
+    def __init__(self, body : str):
         """
         build CFG for method 
         init:
@@ -60,28 +60,37 @@ class Sunit:
             self.source_code: String class
         """
         
-        cls="public class Main{\n"+body+"\n}"
-        self.source_code=cls
-        tree=javalang.parse.parse(cls)
-        self.ast=tree
-        method=None
-        for _,node in tree.filter(javalang.tree.MethodDeclaration):
-            method=node
+        cls = "public class Main {\n" + body + "\n}"
+        tree = javalang.parse.parse(cls)
         
-        G=nx.DiGraph()
-        for _,node in method:
+        self.source_code = cls
+        self.ast = tree
+        
+        method = None
+        
+        for _, node in tree.filter(javalang.tree.MethodDeclaration):
+            method = node
+        
+        G = nx.DiGraph()
+        for _, node in method:
             G.add_node(method)
-        prev=[method]
+        prev = [method]
         for stmt in method.body:
-            prev,G=buildNode(G,prev,stmt)
-        self.cfg=G
-        
+            prev, G = buildNode(G, prev, stmt)
+            
+        self.cfg = G
+
     """
         return source code line from node position(Loc)
     """    
-    def getSource(self, node : javalang.ast.Node):    
-        return node.position.line
-    
+    def getSource(self, node : javalang.ast.Node):  
+        if node.position == None:
+            return ""
+            
+        for idx, line in enumerate(self.source_code.splitlines()):
+            if idx == node.position.line:
+                return line
+                
     def getSameActionSunit(self):
         """
         get method declaration of the main method
