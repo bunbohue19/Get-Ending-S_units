@@ -8,7 +8,12 @@ def getLine(node:javalang.ast.Node):
     get line of code for sorting
     waring: not use for extract source code
     """
-    return node.position.line*10000+node.position.column
+    pos=0
+    try:
+        node.position.line*10000+node.position.column
+    except:
+        pass
+    return pos
 def findData(root):
     """
     given statement, return data ussed
@@ -105,13 +110,14 @@ class Sunit:
         """
         check if a node is an extra node that will not be executed in the code
         """
-        if self.cfg.in_degree(node)==0:
-            if isinstance(node,javalang.tree.MethodDeclaration):
+        method=None
+        for _,node in self.ast.filter(javalang.tree.MethodDeclaration):
+            method=node
+        traverse=list(nx.edge_dfs(self.cfg,method,'original'))
+        for traveled in traverse:
+            if node in traveled:
                 return False
-            else:
-                return True
-        return any(self.isIsolated(pred) for pred in self.cfg.predecessors(node))
-        
+        return True
     def composeSunit(self):
         """
         get compose first 3 sunit heuristic
@@ -159,7 +165,7 @@ class Sunit:
                 if node.else_statement is not None:
                     el=node.else_statement
                     
-                    if isinstance(el.statements,javalang.tree.BlockStatement):
+                    if isinstance(el,javalang.tree.BlockStatement):
                         block+=el.statements
                     else:
                         block.append(el)
@@ -168,11 +174,13 @@ class Sunit:
                         res+=[node]
                         break
                 
-            elif isinstance(node,javalang.tree.SwitchStatementCase):
-                for stmt in node.statements:
-                    if stmt in sunits:
-                        res+= list(self.cfg.predecessors(list(self.cfg.predecessors(node.case[0]))[0]))
-                        break
+            elif isinstance(node,javalang.tree.SwitchStatement):
+                for case in node.cases:
+                    for stmt in case.statements:
+                            
+                        if stmt in sunits:
+                            res+= [node]
+                            break
             elif isinstance(node,(javalang.tree.WhileStatement,javalang.tree.ForStatement,javalang.tree.DoStatement)):
                 for stmt in node.body:
                     if stmt in sunits:
@@ -226,6 +234,12 @@ class Sunit:
         """
         if isinstance(node,(javalang.tree.IfStatement,javalang.tree.SwitchStatement,javalang.tree.StatementExpression)):
             return [node]
+        elif any(isinstance(pre,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)) for pre in list(self.cfg.predecessors(node))):
+            res=[]
+            for pre in list(self.cfg.predecessors(node)):
+                if isinstance(pre,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
+                    res+=self.get_end(pre)
+            return res
         else:
             return self.getPrevStatement(list(self.cfg.predecessors(node))[0])
     def getEndingSunit(self):
@@ -244,14 +258,19 @@ class Sunit:
                     if node.label is None and node.expression is None:
                         res+=self.getPrevStatement(node)
                         continue
-                if isinstance(node,(javalang.tree.BreakStatement)):
+                if isinstance(node,(javalang.tree.BreakStatement)) :
                     while all(isinstance(pre,javalang.tree.Statement) for pre in list(self.cfg.predecessors(node))):
-                        node=list(self.cfg.predecessors(node))[0]
+                        if len(list(self.cfg.predecessors(node)))>0:
+                            
+                            node=list(self.cfg.predecessors(node))[0]
+                        else: 
+                            break
+                
                 res+=[node]
                         
-            elif (all(suc in node.children for suc in list(self.cfg.successors(node))))and isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
-                print(node)
-                res+=self.get_end(node.body)
+            elif isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
+                if (all(suc in node.children for suc in list(self.cfg.successors(node)))):
+                    res+=self.get_end(node.body)
         return res
     def get_end(self,node):
         """

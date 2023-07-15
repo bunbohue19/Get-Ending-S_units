@@ -44,7 +44,9 @@ class stmtCFG:
                 cfg.add_node(stmt)
                 for pre in prev:
                     cfg.add_edge(pre,node)
-                label=check_pred(cfg,node,(javalang.tree.ForStatement,javalang.tree.DoStatement,javalang.tree.WhileStatement))
+                label=check_pred(cfg,node,(javalang.tree.ForStatement,javalang.tree.DoStatement,javalang.tree.WhileStatement,javalang.tree.SwitchStatement))
+                if isinstance(label,javalang.tree.SwitchStatement):
+                    return [node],cfg
                 cfg.add_edge(stmt,label)
                 return [],cfg  
             elif isinstance(stmt,javalang.tree.ContinueStatement):
@@ -200,5 +202,6 @@ class stmtCFG:
             cfg.add_nodes_from(case.statements)
             for stmt in case.statements:
                 pre,cfg=self.buildNode(cfg,pre,stmt)
-            prev.append(pre)
+            for x in pre:
+                prev.append(x)
         return prev,cfg
