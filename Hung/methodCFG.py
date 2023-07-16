@@ -8,13 +8,17 @@ def getLine(node:javalang.ast.Node):
     get line of code for sorting
     waring: not use for extract source code
     """
-    pos=0
-    try:
-        node.position.line*10000+node.position.column
-    except:
-        pass
-    return pos
+    # pos=0
+    # try:
+        
+    # except:
+    #     print(node)
+    return node.position.line
 def findData(root):
+    """
+    FOR DATA FACILITATING ONLY
+    find data that used in a block of for, while, do 
+    """
     res=[]
     children=None
     if isinstance(root,javalang.ast.Node):
@@ -29,6 +33,10 @@ def findData(root):
             res+=findData(child)
     return res
 def containData(var,datalist):
+    """
+    FOR DATA FACILITATING ONLY
+    return if data contain in datalist
+    """
     if isinstance(var,javalang.tree.MemberReference):
         for data in datalist:
             if isinstance(data,javalang.tree.MemberReference):
@@ -42,14 +50,21 @@ def containData(var,datalist):
     return False
 
 def camelCaseSplit(string):
+    """
+    split camel case java
+    """
     strings = [string]
     strings = [re.sub(r"(\b\w)", lambda match: match.group().upper(), s) for s in strings]
     return [x.lower() for x in re.findall(r'[A-Z](?:[a-z]+|[A-Z]*(?=[A-Z]|$))', strings[0])] + re.findall(r'\d+', strings[0])
 
 def isSWUM(method_name_1 : str, method_name_2 : str):
+    """
+    word model for software
+    compare 2 string semantically
+    """
     words_1, words_2 = camelCaseSplit(method_name_1), camelCaseSplit(method_name_2)    
     numOfMatches = 0
-    words_len = min(len(words_1), len(words_2))
+    words_len = max(len(words_1), len(words_2))
     for word_1, word_2 in zip(words_1, words_2):
         if word_1 == word_2:
             numOfMatches += 1
@@ -77,11 +92,12 @@ class Sunit:
         
         for _, node in tree.filter(javalang.tree.MethodDeclaration):
             method = node
-        
+            break
+        self.method_node=method
         G = nx.DiGraph()
-        for _, node in method:
-            G.add_node(method)
+        G.add_node(method)
         prev = [method]
+        x=method.body
         for stmt in method.body:
             prev, G = buildNode(G, prev, stmt)
             
@@ -95,7 +111,7 @@ class Sunit:
             return ""
             
         for idx, line in enumerate(self.source_code.splitlines()):
-            if idx == node.position.line:
+            if idx+1 == node.position.line:
                 return line
                 
     def getSameActionSunit(self):
@@ -118,10 +134,7 @@ class Sunit:
         """
         check if a node is an extra node that will not be executed in the code
         """
-        method=None
-        for _,node in self.ast.filter(javalang.tree.MethodDeclaration):
-            method=node
-        traverse=list(nx.edge_dfs(self.cfg,method,'original'))
+        traverse=list(nx.edge_dfs(self.cfg,self.method_node,'original'))
         for traveled in traverse:
             if node in traveled:
                 return False
@@ -148,10 +161,38 @@ class Sunit:
             if not dt in heu_control:
                 heu_control.append(dt)
         heu_control+=self.getControllingSunit(res)
-        heu_control.sort(key=getLine)
-        return heu_control
+        ret=[]
+        for unit in heu_control:
+            if not unit in ret:
+                ret.append(unit)
+        self.source_code= self.getNewBody(ret)
 
-    def getControllingSunit(self,sunit:list[javalang.ast.Node]):
+    def getNewBody(self,sunits:javalang.ast.Node):
+        """
+        remove excesive data and modify source code
+        """
+        remove_list=[]
+        pos=[]
+        for unit in sunits:
+            try:
+                pos.append(unit.position.line)
+            except:
+                continue
+        for node in self.cfg.nodes:
+            try:
+                if not node in sunits and not node.position.line in pos and not isinstance(node,javalang.tree.MethodDeclaration):
+                    remove_list.append(node.position.line)
+            except:
+                continue
+        body_lines=self.source_code.split('\n')
+        res=[]
+        for idx,line in enumerate(body_lines):
+            if idx+1 in remove_list or idx==0 or idx==(len(body_lines)-1):
+                
+                continue
+            res.append(line)
+        return '\n'.join(res)
+    def getControllingSunit(self,sunits:list[javalang.ast.Node]):
         """
         input previous heuristic
         return the latest branching statement (if/switch/while/for)
@@ -177,7 +218,20 @@ class Sunit:
                     if stmt in sunits:
                         res+=[node]
                         break
-                
+            elif isinstance(node, javalang.tree.TryStatement):
+                children=[]
+                if node.resources is not None:
+                    for unit in node.resources:
+                        children.append(unit)
+                if node.catches is not None:
+                    for catch in node.catches:
+                        children.append(catch.parameter)
+                        for stmt in catch.block:
+                            children.append(stmt)
+                for blk in node.block:
+                    children.append(blk)
+                if any(child in sunits for child in children):
+                    res.append(node)
             elif isinstance(node,javalang.tree.SwitchStatement):
                 for case in node.cases:
                     for stmt in case.statements:
@@ -196,7 +250,7 @@ class Sunit:
         get data
         """
         datalist=[]
-        for node in sunit:
+        for node in sunits:
             datalist+=findData(node)
         res=[]
         for _,node in self.ast:
@@ -253,10 +307,7 @@ class Sunit:
                 if self.isIsolated(node):
                     
                     continue
-                if isinstance(node,javalang.tree.ReturnStatement):
-                    if node.label is None and node.expression is None:
-                        res+=self.getPrevStatement(node)
-                        continue
+                
                 if isinstance(node,(javalang.tree.BreakStatement)) :
                     while all(isinstance(pre,javalang.tree.Statement) for pre in list(self.cfg.predecessors(node))):
                         if len(list(self.cfg.predecessors(node)))>0:
@@ -266,7 +317,8 @@ class Sunit:
                             break
                 
                 res+=[node]
-                        
+            elif isinstance(node,javalang.tree.ReturnStatement):
+                res+=[node]        
             elif isinstance(node,(javalang.tree.ForStatement,javalang.tree.WhileStatement,javalang.tree.DoStatement)):
                 if (all(suc in node.children for suc in list(self.cfg.successors(node)))):
                     res+=self.get_end(node.body)
