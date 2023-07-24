@@ -39,6 +39,7 @@ class stmtCFG:
             return self.buildStmt(cfg,prev,node)
     
     def buildBlock(self,cfg:nx.DiGraph,prev:list[javalang.ast.Node],node:javalang.tree.BlockStatement):
+        
         for stmt in node.statements:
             if isinstance(stmt,(javalang.tree.BreakStatement)):
                 cfg.add_node(stmt)
@@ -163,15 +164,15 @@ class stmtCFG:
         prev_catches=[]
         if node.catches is not None:
             for catch in node.catches:
-                prev_catch,cfg=self.buildNode(cfg,prev_try,catch.parameter)
+                prev_catch,cfg=self.buildNode(cfg,prev,catch.parameter)
                 for blk in catch.block:
                     prev_catch,cfg=self.buildNode(cfg,prev_catch,blk)
                 for pre in prev_catch:
                     prev_catches.append(pre)
-            
+        
         prev=[]
         for pre in prev_catches:
-            prev.append(pre)
+            cfg.add_edge(pre,node)
         for pre in prev_try:
             prev.append(pre)
         if node.finally_block is None:

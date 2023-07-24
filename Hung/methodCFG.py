@@ -24,6 +24,10 @@ def findData(root):
     if isinstance(root,javalang.ast.Node):
         if isinstance(root,(javalang.tree.MemberReference,javalang.tree.This)):
             return [root]
+        elif isinstance(root,javalang.tree.MethodInvocation):
+            if not root.qualifier is None:
+                res+=[root]
+            children=root.children
         else:
             children=root.children
     else:
@@ -42,10 +46,18 @@ def containData(var,datalist):
             if isinstance(data,javalang.tree.MemberReference):
                 if data.member==var.member:
                     return True
+            if isinstance(data,javalang.tree.MethodInvocation):
+                if data.qualifier==var.member:
+                    return True
     if isinstance(var,javalang.tree.This):
         for data in datalist:
             if isinstance(data,javalang.tree.This):
                 if var.selectors==data.selectors:
+                    return True
+    if isinstance(var,javalang.tree.MethodInvocation):
+        for data in datalist:
+            if isinstance(data,javalang.tree.MethodInvocation):
+                if data.qualifier==var.qualifier:
                     return True
     return False
 
@@ -151,27 +163,50 @@ class Sunit:
         res+=self.getEndingSunit()
         res+=self.getSameActionSunit()
         res+=self.getVoidReturnSunit()
-        heu_data=[]
+        heu_data1=[]
         for result in res:
-            if not result in heu_data:
-                heu_data.append(result)
-        heu_data+=self.getDataFacilitatingSunit(heu_data)
-        heu_control=[]
-        for dt in heu_data:
-            if not dt in heu_control:
-                heu_control.append(dt)
-        heu_control+=self.getControllingSunit(res)
+            if not result in heu_data1:
+                heu_data1.append(result)
+        heu_data1+=self.getDataFacilitatingSunit(heu_data1)
+        heu_control1=[]
+        for dt in heu_data1:
+            if not dt in heu_control1:
+                heu_control1.append(dt)
+        heu_control1+=self.getControllingSunit(heu_control1)
+        heu_data2=[]
+        for unit in heu_control1:
+            if not unit in heu_data2:
+                heu_data2.append(unit)
+        heu_data2+=self.getDataFacilitatingSunit(heu_control1)
+        # heu_control2=[]
+        # for dt in heu_data2:
+        #     if not dt in heu_control2:
+        #         heu_control2.append(dt)
+        # heu_control2+=self.getControllingSunit(heu_control2)
         ret=[]
-        for unit in heu_control:
+        for unit in heu_data2:
             if not unit in ret:
                 ret.append(unit)
+        # prev_len=-1
+        # ret=res
+        # while repeat>0:
+        #     prev_len=len(ret)
+        #     res=[]
+        #     ret+=self.getDataFacilitatingSunit(ret)
+        #     ret+=self.getControllingSunit(ret)
+        #     for unit in ret:
+        #         if not unit in res:
+        #             res.append(unit)
+        #     ret=res
+        #     repeat-=1
         self.source_code= self.getNewBody(ret)
-
+        
     def getNewBody(self,sunits:javalang.ast.Node):
         """
         remove excesive data and modify source code
         """
         remove_list=[]
+        remove_bracket=[]
         pos=[]
         for unit in sunits:
             try:
@@ -182,6 +217,21 @@ class Sunit:
             try:
                 if not node in sunits and not node.position.line in pos and not isinstance(node,javalang.tree.MethodDeclaration):
                     remove_list.append(node.position.line)
+                    if isinstance(node,javalang.tree.IfStatement):
+                        if node.then_statement is not None:
+                            self.removeBlockBracket(node.then_statement)
+                        if node.else_statement is not None:
+                            
+                            self.removeBlockBracket(node.else_statement)
+                            
+                    if isinstance(node,(javalang.tree.DoStatement,javalang.tree.ForStatement,javalang.tree.WhileStatement)):
+                        if node.body is not None:
+                            self.removeBlockBracket(node.body)
+                    if isinstance(node,javalang.tree.TryStatement):
+                        last_bracket=self.removeTry(node)
+                        if node.catches is not None:
+                            for catch in node.catches:
+                                last_bracket=self.removeCatch(catch,last_bracket+1)
             except:
                 continue
         body_lines=self.source_code.split('\n')
@@ -191,7 +241,83 @@ class Sunit:
                 
                 continue
             res.append(line)
-        return '\n'.join(res)
+        lines=[line for line in res if line.strip()]
+        ret='\n'.join(lines)
+
+        return ret.strip()
+    def removeCatch(self,catch,last_bracket):
+        while self.source_code[last_bracket]!="{":
+            if self.source_code[last_bracket]!="\n":
+                self.source_code=self.source_code[:last_bracket]+' '+self.source_code[last_bracket+1:]
+            last_bracket+=1
+        cnt=1
+        if self.source_code[last_bracket]!='\n':
+            self.source_code=self.source_code[:last_bracket]+' '+self.source_code[last_bracket+1:]
+        while cnt >0:
+            last_bracket+=1
+            if self.source_code[last_bracket]=='{':
+                cnt+=1
+            if self.source_code[last_bracket]=='}':
+                cnt-=1
+            if self.source_code[last_bracket]!="\n":
+                self.source_code=self.source_code[:last_bracket]+' '+self.source_code[last_bracket+1:]
+        return last_bracket
+
+
+    def removeTry(self,node):
+        pos=self.getpos(node)
+        while self.source_code[pos]!='{':
+            
+            x=self.source_code[pos]
+            if self.source_code[pos]!='\n':
+                self.source_code=self.source_code[:pos]+' '+self.source_code[pos+1:]
+            pos+=1
+        if self.source_code[pos]!='\n':
+            self.source_code=self.source_code[:pos]+' '+self.source_code[pos+1:]
+        cnt=1
+        
+        while cnt>0:
+            pos+=1
+            if self.source_code[pos]=='{':
+                cnt+=1
+            if self.source_code[pos]=='}':
+                cnt-=1
+        if self.source_code[pos]!='\n':
+            self.source_code=self.source_code[:pos]+' '+self.source_code[pos+1:]
+        return pos
+    def getpos(self,node):
+        line=node.position.line-1
+        col=node.position.column-1
+        res=0
+        while line>0:
+            if self.source_code[res]=='\n':
+                line-=1
+            res+=1
+        while col>0:
+            col-=1
+            res+=1
+        return res
+    
+    def removeBlockBracket(self,node:javalang.tree.BlockStatement):
+        if isinstance(node,javalang.tree.IfStatement):
+            return
+        
+        init=self.getpos(node)
+        if self.source_code[init]!="{":
+            return
+        if self.source_code[init]!='\n':
+            
+            self.source_code=self.source_code[:init]+' '+self.source_code[init+1:]
+        
+        cnt=1
+        while cnt>0:
+            init+=1
+            if self.source_code[init]=='{':
+                cnt+=1
+            if self.source_code[init]=='}':
+                cnt-=1
+        self.source_code=self.source_code[:init]+' '+self.source_code[init+1:]
+        
     def getControllingSunit(self,sunits:list[javalang.ast.Node]):
         """
         input previous heuristic
@@ -218,20 +344,7 @@ class Sunit:
                     if stmt in sunits:
                         res+=[node]
                         break
-            elif isinstance(node, javalang.tree.TryStatement):
-                children=[]
-                if node.resources is not None:
-                    for unit in node.resources:
-                        children.append(unit)
-                if node.catches is not None:
-                    for catch in node.catches:
-                        children.append(catch.parameter)
-                        for stmt in catch.block:
-                            children.append(stmt)
-                for blk in node.block:
-                    children.append(blk)
-                if any(child in sunits for child in children):
-                    res.append(node)
+            
             elif isinstance(node,javalang.tree.SwitchStatement):
                 for case in node.cases:
                     for stmt in case.statements:
@@ -240,11 +353,21 @@ class Sunit:
                             res+= [node]
                             break
             elif isinstance(node,(javalang.tree.WhileStatement,javalang.tree.ForStatement,javalang.tree.DoStatement)):
-                for stmt in node.body:
+                if not isinstance(node.body,javalang.tree.BlockStatement):
+                    if isinstance(node.body,list):
+                        print("it is list")
+                    if node.body in sunits:
+                        res+=[node]
+                        break
+                    else:
+                        continue
+                for stmt in node.body.statements:
+                    
                     if stmt in sunits:
                         res+=[node]
                         break
         return res
+    
     def getDataFacilitatingSunit(self,sunits:list[javalang.ast.Node]):
         """
         get data
@@ -261,12 +384,21 @@ class Sunit:
                         if any([data.member== dec.name for dec in declarators ]):
                             res.append(node)
                             break
+                    if isinstance(data,javalang.tree.MethodInvocation):
+                        declarators=node.declarators
+                        if any([data.qualifier== dec.name for dec in declarators ]):
+                            res.append(node)
+                            break
+                        if data.qualifier in declarators:
+                            res.append(node)
             elif isinstance(node,javalang.tree.StatementExpression):
                 if isinstance(node.expression,javalang.tree.Assignment):
                     assign=node.expression
                     if containData(assign.expressionl,datalist):
                         res.append(node)
-                    
+                if isinstance(node.expression,javalang.tree.MethodInvocation):
+                    if containData(node.expression,datalist):
+                        res.append(node)
                 if isinstance(node.expression,javalang.tree.MemberReference):
                     if containData(node,datalist):
                         res.append(node)
