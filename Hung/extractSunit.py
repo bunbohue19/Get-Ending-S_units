@@ -12,5 +12,3 @@ def extract(inputFile,outputFile):
             out_file.write(sunit.source_code)
     except Exception as e:
         print(f"Error: {e}, {type(e)}")
-    
-    pass
